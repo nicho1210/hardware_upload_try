@@ -29,6 +29,23 @@ Please inspect the following if available in the repository:
 
 ---
 
+## Final Design Reproducibility Guide
+
+This repository contains the final PYNQ-Z2 HDMI video processing design with real-time thresholded video output and background block-based motion detection reporting.
+
+The submitted final design is located in:
+
+```text
+selected_motion_regions/pyzq/
+README.md
+plan.md
+structure.c
+video_ip.cpp
+video_ip.h
+tb_video_ip.cpp
+selected_motion_regions/
+```
+
 ## 1. Project overview
 This project implements a **custom Vitis HLS video IP** for the PYNQ-Z2 HDMI pipeline. The final system accepts a live HDMI video stream, performs **real-time threshold-based video preprocessing** on the FPGA, and computes **block-based motion detection** in the background by comparing the current frame against the previous frame.
 
