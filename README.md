@@ -35,16 +35,14 @@ This repository contains the final PYNQ-Z2 HDMI video processing design with rea
 
 The submitted final design is located in:
 
-```text
-selected_motion_regions/pyzq/
-README.md
-plan.md
-structure.c
-video_ip.cpp
-video_ip.h
-tb_video_ip.cpp
-selected_motion_regions/
-```
+## Important files and paths
+- HLS IP source: `selected_motion_regions/pyzq/hw/hls_gray_ip/video_gray_live.cpp`
+- PS software: `selected_motion_regions/pyzq/baremetal/src/video_out_pynq.c`
+- Hardware block design export: `selected_motion_regions/pyzq/hw/src/bd.tcl`
+- HLS synthesis report: `selected_motion_regions/pyzq/hw/hls_gray_ip/video_gray_live_prj/solution1/syn/reportcsynth.rpt`
+- Timing / implementation summary: `selected_motion_regions/pyzq/hw/hw_proj/hw_proj.runs/impl_1/video_out_pynq_z2_wrapper_timing_summary_routed.rpt`
+
+
 
 ## 1. Project overview
 This project implements a **custom Vitis HLS video IP** for the PYNQ-Z2 HDMI pipeline. The final system accepts a live HDMI video stream, performs **real-time threshold-based video preprocessing** on the FPGA, and computes **block-based motion detection** in the background by comparing the current frame against the previous frame.
@@ -666,10 +664,3 @@ The final implementation successfully balances both:
 - AMD Vitis HLS User Guide (UG1399)
 - AMD Vivado AXI4-Stream video IP documentation
 - PYNQ-Z2 HDMI reference pipeline resources
-
-## Important files and paths
-- HLS IP source: `selected_motion_regions/pyzq/hw/hls_gray_ip/video_gray_live.cpp`
-- PS software: `selected_motion_regions/pyzq/baremetal/src/video_out_pynq.c`
-- Hardware block design export: `selected_motion_regions/pyzq/hw/src/bd.tcl`
-- HLS synthesis report: `selected_motion_regions/pyzq/hw/hls_gray_ip/video_gray_live_prj/solution1/syn/reportcsynth.rpt`
-- Timing / implementation summary: `selected_motion_regions/pyzq/hw/hw_proj/hw_proj.runs/impl_1/video_out_pynq_z2_wrapper_timing_summary_routed.rpt`
