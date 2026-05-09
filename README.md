@@ -1,5 +1,21 @@
 # Real-Time Threshold Video and Motion Detection Reporting IP for PYNQ
 
+## Repository URL
+**GitHub repository:** `https://github.com/nicho1210/hardware_upload_try`
+
+### Notes for grader
+This project documents a custom **Vitis HLS video IP** integrated into the **PYNQ-Z2 HDMI pipeline**.  
+Please inspect the following if available in the repository:
+
+- root `README.md`
+- HLS source for the custom IP
+- Vivado block design / integration files
+- PS software for UART reporting
+- synthesis / timing / resource summaries
+- screenshots or logs showing final behavior
+
+---
+
 ## Project title
 **Real-Time Threshold Video and Motion Detection Reporting IP for PYNQ-Z2**
 
@@ -79,7 +95,61 @@ This provides a robust and repeatable real-time FPGA implementation.
 
 ---
 
-## 4. Final system behavior
+## 4. IP interface definition
+
+### 4.1 Role of the custom IP
+The custom IP, referred to in this project as **`video_gray_live`**, sits in the AXI4-Stream video pipeline and performs:
+
+1. real-time threshold preprocessing for HDMI output
+2. background previous-frame comparison for motion detection
+3. packed motion-result export to the PS through a GPIO-visible output signal
+
+### 4.2 Streaming interface
+The IP uses:
+- **AXI4-Stream input** for incoming video pixels
+- **AXI4-Stream output** for outgoing processed video pixels
+
+These ports carry:
+- pixel data
+- frame-start information (`TUSER`)
+- line-end information (`TLAST`)
+- valid/ready handshake (`TVALID`, `TREADY`)
+
+### 4.3 Side-channel interface
+In the final version, the IP also exports a packed motion-information signal:
+
+- **`motion_info_out[31:0]`**
+
+This signal is connected to **AXI GPIO**, then read by the PS and printed through UART.
+
+### 4.4 Packed message format
+The 32-bit motion information word is defined as:
+
+- **[15:0]** = `motion_count`
+- **[24:16]** = `region_mask`
+- **[31:25]** = reserved
+
+where:
+- `motion_count` = total number of changed sampled blocks in the frame
+- `region_mask` = 9-bit flag showing which of the 3×3 screen regions contain motion
+
+### 4.5 Processing-system interaction
+The PS is responsible for:
+- clock setup
+- VTC setup
+- reset control
+- HDMI lock monitoring
+- reading `motion_info_out` via AXI GPIO
+- UART reporting of motion results
+
+This means the message flow between the IP and the processor is explicitly defined:
+- **PL computes motion**
+- **AXI GPIO transfers summary information**
+- **PS reads and reports it**
+
+---
+
+## 5. Final system behavior
 
 ### HDMI output
 The HDMI output shows a **thresholded binary image**:
@@ -107,9 +177,9 @@ This means:
 
 ---
 
-## 5. Final hardware architecture
+## 6. Final hardware architecture
 
-### Data path
+### 6.1 Data path
 The final hardware video path is:
 
 ```text
@@ -122,7 +192,7 @@ HDMI Input
 -> HDMI Output
 ```
 
-### Side-channel motion reporting path
+### 6.2 Side-channel motion reporting path
 The HLS IP also outputs a packed motion-information word to AXI GPIO:
 
 ```text
@@ -132,7 +202,7 @@ video_gray_live motion_info_out[31:0]
 -> UART printout
 ```
 
-### Why the extra register slice and FIFO were added
+### 6.3 Why the extra register slice and FIFO were added
 During debugging, we found that the video path needed buffering and stabilization support. We inserted:
 - an **AXI4-Stream Register Slice**
 - an **AXI4-Stream Data FIFO**
@@ -141,10 +211,65 @@ to improve robustness in the HDMI output path.
 
 ---
 
-## 6. HLS IP functionality
+## 7. IP design and module breakdown
+
+The final design can be understood as the following logical modules:
+
+### Module A: HDMI input and AXI4-Stream conversion
+Receives live HDMI video and converts it into an AXI4-Stream video interface compatible with the custom HLS IP.
+
+### Module B: Threshold video generation
+Inside the HLS IP, the incoming video is reduced to a binary thresholded output for stable display.
+
+### Module C: Previous-frame memory
+Stores one binary state per 4×4 block to represent the previous frame.
+
+### Module D: Motion comparison engine
+Compares current sampled binary block state with previous-frame binary state using XOR.
+
+### Module E: Motion summary logic
+Accumulates:
+- frame-level motion count
+- 3×3 region mask
+
+### Module F: AXI GPIO export path
+Packs motion results into a 32-bit word and exports them to PS-visible AXI GPIO.
+
+### Module G: PS control and reporting
+The PS configures the video pipeline, monitors status, and reports motion results through UART.
+
+---
+
+## 8. Pipelining and throughput strategy
+
+### 8.1 Streaming requirement
+The video path must sustain real-time HDMI throughput, so the design is built around a **streaming pixel pipeline**.
+
+### 8.2 HLS strategy
+The HLS design uses:
+- AXI4-Stream interfaces
+- pipelined loop structure
+- simple per-pixel arithmetic on the displayed video path
+- compact on-chip previous-frame state
+- a motion-analysis path that does **not directly control the displayed output pixels**
+
+### 8.3 Critical architectural decision
+The most important pipelining decision was to **separate displayed video output from previous-frame-driven motion output**.
+
+That is:
+- threshold output remains on the stable path
+- previous-frame motion logic runs in the background
+- only summarized motion information is exported
+
+This was necessary to maintain reliable video throughput.
+
+---
+
+## 9. HLS IP functionality
+
 The final HLS IP performs two tasks at the same time.
 
-### 6.1 Stable video output path
+### 9.1 Stable video output path
 For every incoming pixel:
 1. Read RGB input pixel
 2. Use the green channel as a simple grayscale proxy
@@ -153,7 +278,7 @@ For every incoming pixel:
 
 This part is the displayed video.
 
-### 6.2 Background motion detection path
+### 9.2 Background motion detection path
 At the same time, the IP also:
 1. Samples one point per **4×4 block**
 2. Converts it into a 1-bit binary value
@@ -168,9 +293,9 @@ This part is not drawn on the video output. Instead, it is reported to the proce
 
 ---
 
-## 7. Motion detection algorithm
+## 10. Motion detection algorithm
 
-### 7.1 Block-based sampling
+### 10.1 Block-based sampling
 Instead of comparing every pixel, the image is sampled once per **4×4 block**.
 
 For a 1280×720 frame:
@@ -180,19 +305,19 @@ For a 1280×720 frame:
 So the motion detector compares:
 
 \[
-320 \times 180 = 57600
+320 	imes 180 = 57600
 \]
 
 sample blocks per frame.
 
-### 7.2 Binary thresholding
+### 10.2 Binary thresholding
 For each sampled block location, we compute:
 
 \[
 curr\_bin =
-\begin{cases}
-1 & \text{if } G \ge T \\
-0 & \text{otherwise}
+Begin{cases}
+1 & 	ext{if } G \ge T \
+0 & 	ext{otherwise}
 \end{cases}
 \]
 
@@ -200,7 +325,7 @@ where:
 - `G` is the selected pixel intensity (green channel),
 - `T` is the threshold.
 
-### 7.3 Previous-frame comparison
+### 10.3 Previous-frame comparison
 Let:
 - `curr_bin` = current frame binary value
 - `prev_bin` = previous frame binary value stored in on-chip memory
@@ -215,7 +340,7 @@ So:
 - if the block changed between frames, motion = 1
 - otherwise, motion = 0
 
-### 7.4 Motion count
+### 10.4 Motion count
 If `motion = 1`, then:
 
 \[
@@ -224,7 +349,7 @@ motion\_count = motion\_count + 1
 
 This gives the total number of changed sampled blocks in the frame.
 
-### 7.5 Region detection (1–9)
+### 10.5 Region detection (1–9)
 The screen is divided into a 3×3 grid:
 
 ```text
@@ -241,7 +366,7 @@ Thus, the system reports:
 
 ---
 
-## 8. Packed motion output format
+## 11. Packed motion output format
 The HLS IP outputs a 32-bit word to AXI GPIO:
 
 - **[15:0]** = `motion_count`
@@ -252,7 +377,7 @@ This is then read by the PS and decoded for UART output.
 
 ---
 
-## 9. Why this project was challenging
+## 12. Why this project was challenging
 This project turned out to be more about **stable real-time video architecture** than just image-processing math.
 
 The main difficulty was not computing motion itself, but maintaining a valid HDMI video stream while adding previous-frame logic.
@@ -271,9 +396,9 @@ This forced us to redesign the architecture so that motion analysis happened in 
 
 ---
 
-## 10. Major debugging steps and challenges
+## 13. Major debugging steps and challenges
 
-### 10.1 HDMI pass-through bring-up
+### 13.1 HDMI pass-through bring-up
 We first verified:
 - VTC configuration
 - clock wizard configuration
@@ -282,18 +407,18 @@ We first verified:
 
 This established a working baseline.
 
-### 10.2 Grayscale and threshold validation
+### 13.2 Grayscale and threshold validation
 We inserted our HLS IP into the pipeline and confirmed:
 - grayscale output worked
 - threshold output worked
 - AXI4-Stream video integration was correct
 
-### 10.3 Motion-output failures
+### 13.3 Motion-output failures
 When we first tried to directly output motion-mask results, the system failed with:
 - `rx_lock = 1`
 - `tx_lock = 0`
 
-### 10.4 AXI stream debugging
+### 13.4 AXI stream debugging
 We used:
 - UART logs
 - multiple ILA probes
@@ -309,10 +434,10 @@ to verify:
 
 These experiments showed that the stream protocol looked valid, but the video path still became unstable for motion-output versions.
 
-### 10.5 Timing issue
+### 13.5 Timing issue
 At one point, implementation timing failed due to heavy debug instrumentation. After removing extra ILAs, timing passed again.
 
-### 10.6 Isolating the root cause
+### 13.6 Isolating the root cause
 We then ran controlled HLS experiments and discovered:
 
 - Threshold output + previous-frame write: **works**
@@ -327,7 +452,69 @@ This led to the final solution:
 
 ---
 
-## 11. Final design summary
+## 14. Verification and evaluation
+
+### 14.1 Functional checks
+We incrementally verified:
+- pass-through
+- grayscale
+- threshold
+- previous-frame background access
+- motion counting
+- region reporting
+
+### 14.2 Hardware checks
+We used:
+- UART logs
+- RX/TX lock monitoring
+- ILA probes
+- timing reports
+- block design validation
+
+### 14.3 Final validation goals
+Final success criteria:
+- HDMI threshold output stable
+- `rx_lock = 1`
+- `tx_lock = 1`
+- motion count changes when the scene changes
+- region outputs track where motion occurs
+
+### 14.4 Simulation and synthesis evidence
+To make the repository grading-friendly, include evidence such as:
+- HLS C simulation screenshots or notes
+- synthesis report summaries
+- latency / throughput summary tables
+- resource utilization tables
+
+Recommended items to add to the repository:
+- a short section summarizing **loop II**
+- estimated latency or throughput from HLS
+- LUT / FF / BRAM / DSP usage
+- screenshots or copied tables from synthesis reports
+
+A suggested summary table format is:
+
+| Version | Description | II | Estimated Clock | LUT | FF | BRAM | DSP | Result |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| v1 | Pass-through | TODO | TODO | TODO | TODO | TODO | TODO | Stable |
+| v2 | Threshold | TODO | TODO | TODO | TODO | TODO | TODO | Stable |
+| v3 | Motion output attempt | TODO | TODO | TODO | TODO | TODO | TODO | Unstable |
+| vFinal | Threshold + UART motion report | TODO | TODO | TODO | TODO | TODO | TODO | Stable |
+
+> Replace `TODO` with actual values from your reports before grading.
+
+### 14.5 Comparison against initial goals
+The initial goal was direct motion-mask or overlay output on HDMI.  
+The final evaluation showed that this was not stable in the current architecture.
+
+The final implementation instead met the following practical goals:
+- stable real-time HDMI output
+- real-time previous-frame motion analysis
+- live UART reporting of motion magnitude and motion location
+
+---
+
+## 15. Final design summary
 
 ### What works now
 - Real-time HDMI input
@@ -343,7 +530,7 @@ This led to the final solution:
 
 ---
 
-## 12. Final system capability
+## 16. Final system capability
 The final system performs:
 
 - real-time frame-to-frame comparison,
@@ -359,7 +546,7 @@ A precise description of the completed system is:
 
 ---
 
-## 13. Software role (PS side)
+## 17. Software role (PS side)
 The PS software performs:
 - clock wizard setup
 - VTC generator setup
@@ -375,7 +562,7 @@ The PS does **not** process the video stream itself. All video processing is don
 
 ---
 
-## 14. HLS design strategy
+## 18. HLS design strategy
 The HLS implementation follows these principles:
 
 - streaming AXI4-Stream input/output
@@ -387,36 +574,49 @@ The HLS implementation follows these principles:
 
 ---
 
-## 15. Verification approach
+## 19. Organization and documentation notes
 
-### Functional checks
-We incrementally verified:
-- pass-through
-- grayscale
-- threshold
-- previous-frame background access
-- motion counting
-- region reporting
+### 19.1 Recommended repository structure
+To make the repository easier for a grader to inspect, organize it so that the design flow is clear:
 
-### Hardware checks
-We used:
-- UART logs
-- RX/TX lock monitoring
-- ILA probes
-- timing reports
-- block design validation
+- root `README.md`
+- HLS source folder
+- Vivado integration folder
+- software/UART control folder
+- reports or report summaries
+- optional images/screenshots folder
 
-### Final validation
-Final success criteria:
-- HDMI threshold output stable
-- `rx_lock = 1`
-- `tx_lock = 1`
-- motion count changes when the scene changes
-- region outputs track where motion occurs
+### 19.2 Keep the repo clean
+Avoid committing unnecessary large generated files such as:
+- `.jou`
+- `.log`
+- `.cache`
+- temporary run directories if not needed
+- very large duplicated build outputs
+
+It is fine to include selected exported design files or reports if they are directly useful for grading.
+
+### 19.3 Make evidence easy to inspect
+Because the grader will not execute the code, documentation should clearly point to:
+- custom IP source file
+- testbench or simulation notes
+- synthesis summaries
+- implementation/timing summaries
+- final architecture diagram
+- UART output examples
+
+### 19.4 Suggested “files to inspect” note
+It is helpful to add a short section near the top of the repo like:
+
+- `README.md` for project summary
+- `hls_src/` for custom IP implementation
+- `reports/` for synthesis and timing summaries
+- `sw/` for PS software and UART reporting
+- `images/` for screenshots of output and debug results
 
 ---
 
-## 16. Current limitations
+## 20. Current limitations
 - Motion results are block-based, not full pixel-accurate masks
 - No HDMI motion-mask overlay in the final stable version
 - Current threshold uses a simple single-channel comparison
@@ -424,7 +624,7 @@ Final success criteria:
 
 ---
 
-## 17. Future work
+## 21. Future work
 Possible next steps include:
 - frame-buffer based motion-mask overlay using DDR / VDMA
 - region-wise motion thresholds
@@ -435,7 +635,7 @@ Possible next steps include:
 
 ---
 
-## 18. Final takeaway
+## 22. Final takeaway
 This project showed that in FPGA video systems, the challenge is not only computing the algorithm correctly, but also preserving a **stable real-time output path**.
 
 The final implementation successfully balances both:
@@ -444,8 +644,15 @@ The final implementation successfully balances both:
 
 ---
 
-## 19. References
+## 23. References
 - PYNQ Video subsystem documentation
 - AMD Vitis HLS User Guide (UG1399)
 - AMD Vivado AXI4-Stream video IP documentation
 - PYNQ-Z2 HDMI reference pipeline resources
+
+## Important files and paths
+- HLS IP source: `path/to/video_gray_live.cpp`
+- PS software: `path/to/video_out_pynq.c`
+- Hardware block design export: `path/to/bd.tcl`
+- HLS synthesis report: `path/to/csynth.rpt`
+- Timing / implementation summary: `path/to/timing_summary.txt`
