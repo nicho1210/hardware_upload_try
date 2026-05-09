@@ -651,8 +651,8 @@ The final implementation successfully balances both:
 - PYNQ-Z2 HDMI reference pipeline resources
 
 ## Important files and paths
-- HLS IP source: `path/to/video_gray_live.cpp`
-- PS software: `path/to/video_out_pynq.c`
-- Hardware block design export: `path/to/bd.tcl`
-- HLS synthesis report: `path/to/csynth.rpt`
-- Timing / implementation summary: `path/to/timing_summary.txt`
+- HLS IP source: `selected_motion_regions/pyzq/hw/hls_gray_ip/video_gray_live.cpp`
+- PS software: `selected_motion_regions/pyzq/baremetal/src/video_out_pynq.c`
+- Hardware block design export: `selected_motion_regions/pyzq/hw/src/bd.tcl`
+- HLS synthesis report: `selected_motion_regions/pyzq/hw/hls_gray_ip/video_gray_live_prj/solution1/syn/reportcsynth.rpt`
+- Timing / implementation summary: `selected_motion_regions/pyzq/hw/hw_proj/hw_proj.runs/impl_1/video_out_pynq_z2_wrapper_timing_summary_routed.rpt`
